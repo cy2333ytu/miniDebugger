@@ -6,10 +6,12 @@
 #include <fstream>
 #include <fcntl.h>
 #include <stdexcept>
-#include<sys/ptrace.h>
+#include <sys/ptrace.h>
 
 #include "linenoise.h"
 #include "debugger.h"
+#include "breakpoint.h"
+
 namespace ccy
 {
 
@@ -29,9 +31,13 @@ void Debugger::run(){
 void Debugger::handleCommand(const std::string& line){
     auto args = split(line, ' ');
     auto command = args[0];
-    if(isPrefix(command, "c")){
+    if(isPrefix(command, "cont")){
         continueExection();
-    }else{
+    }else if(isPrefix(command, "break")){
+        std::string addr{args[1], 2};
+        setBreakpointAtAddress(std::stol(addr, 0, 16));
+    }
+    else{
         std::cerr << "Unknow command\n";
     }
 }

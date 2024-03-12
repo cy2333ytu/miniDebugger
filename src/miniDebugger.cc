@@ -14,6 +14,8 @@ int main(int argc, char* argv[]){
 
     if(pid == 0){
         // in child process
+        ptrace(PTRACE_TRACEME, 0, nullptr, nullptr);
+        execl(progName, progName, nullptr);
     }else if(pid >= 1){
         // in parent process
         std::cout << "Start debugger process " << pid << "\n";
