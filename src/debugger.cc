@@ -28,6 +28,13 @@ void Debugger::run(){
     }
 }
 
+void Debugger::setBreakpointAtAddress(std::intptr_t addr){
+    std::cout << "Set breakpoint at address 0x" << std::hex << addr << std::endl;
+    auto bp = std::make_unique<Breakpoint>(m_pid, addr);
+    bp->enable();
+    m_breakpoint[addr] = std::move(bp);
+}
+
 void Debugger::handleCommand(const std::string& line){
     auto args = split(line, ' ');
     auto command = args[0];

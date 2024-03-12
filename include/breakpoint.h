@@ -15,13 +15,11 @@ public:
     void disable();
     bool isEnable() const {return m_enabled;}
     std::intptr_t getAddr() const {return m_addr;}
-    void setBreakpointAtAddress(std::intptr_t addr);
 private:
     pid_t m_pid;
     std::intptr_t m_addr;
     bool m_enabled;
     uint8_t m_saved_data;
-    std::unordered_map<std::intptr_t, std::unique_ptr<Breakpoint>> m_breakpoint;
 };
 
 

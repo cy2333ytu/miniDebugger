@@ -3,7 +3,7 @@
 
 #include <string>
 #include <vector>
-
+#include "breakpoint.h"
 namespace ccy{
 
 class Debugger{
@@ -16,9 +16,11 @@ public:
     std::vector<std::string> split(const std::string&s, char delimiter);
     void continueExection();
     bool isPrefix(const std::string&s, const std::string& of);
+    void setBreakpointAtAddress(std::intptr_t addr);
 private:
     std::string m_prog_name;
     pid_t m_pid;
+    std::unordered_map<std::intptr_t, std::unique_ptr<Breakpoint>> m_breakpoint;
 };
 
 

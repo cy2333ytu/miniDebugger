@@ -23,11 +23,6 @@ void Breakpoint::disable(){
     m_enabled = false;
 
 }
-void Breakpoint::setBreakpointAtAddress(std::intptr_t addr){
-    std::cout << "Set breakpoint at address 0x" << std::hex << addr << std::endl;
-    auto bp = std::make_unique<Breakpoint>(m_pid, addr);
-    bp->enable();
-    m_breakpoint[addr] = std::move(bp);
-}
+
 
 }
