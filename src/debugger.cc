@@ -14,7 +14,16 @@
 
 namespace ccy
 {
-
+    Debugger::Debugger(std::string prog_name, pid_t pid):
+        m_prog_name{prog_name}, m_pid{pid}
+    {
+        m_prog_name = prog_name;
+        m_pid = pid;
+        auto fd = open(m_prog_name.c_str(), O_RDONLY);
+        m_pElf = elf::elf{elf::create_mmap_loader(fd)};
+        m_pDwarf = dwarf::dwarf{dwarf::elf::create_loader(m_pElf)};
+        close(fd);
+    }
 void Debugger::run(){
     int wait_status;
     auto options = 0;
@@ -69,6 +78,22 @@ void Debugger::continueExection(){
     int wait_status;
     auto options = 0;
     waitpid(m_pid, &wait_status, options);
+}
+
+dwarf::die Debugger::getFunctionFromPc(uint64_t pc){
+    for(auto& compilationUnit: m_pDwarf.compilation_units()){
+        if(dwarf::die_pc_range(compilationUnit.root()).contains(pc)){
+            for(auto& die : compilationUnit.root()){
+                if(die.tag == dwarf::DW_TAG::subprogram){
+                    if(dwarf::die_pc_range(die).contains(pc)){
+                        return die;
+                    }
+                }
+            }
+        }
+    }
+    throw std::out_of_range{"Cannot find function"};
+
 }
 
 }

@@ -1,15 +1,20 @@
 #ifndef DEBUGGER_H
 #define DEBUGGER_H
 
+#include "breakpoint.h"
+#include "elf/elf++.hh"
+#include "dwarf/dwarf++.hh"
+#include "mem.h"
+#include "signal.h"
+
 #include <string>
 #include <vector>
-#include "breakpoint.h"
+
 namespace ccy{
 
 class Debugger{
 public:
-    Debugger(std::string prog_name, pid_t pid):
-            m_prog_name{prog_name}, m_pid{pid}{}
+    Debugger(std::string prog_name, pid_t pid);
 
     void run();
     void handleCommand(const std::string& line);
@@ -17,10 +22,13 @@ public:
     void continueExection();
     bool isPrefix(const std::string&s, const std::string& of);
     void setBreakpointAtAddress(std::intptr_t addr);
+    dwarf::die getFunctionFromPc(uint64_t pc);
 private:
     std::string m_prog_name;
     pid_t m_pid;
     std::unordered_map<std::intptr_t, std::unique_ptr<Breakpoint>> m_breakpoint;
+    elf::elf m_pElf;          // Executable and Linkable Format
+    dwarf::dwarf m_pDwarf;    // Debugging With Arbitrary Record Format
 };
 
 
