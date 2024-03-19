@@ -15,7 +15,7 @@
 namespace ccy
 {
     Debugger::Debugger(std::string prog_name, pid_t pid):
-        m_prog_name{prog_name}, m_pid{pid}
+        m_prog_name{prog_name}, m_pid{pid}, m_memory{pid}
     {
         m_prog_name = prog_name;
         m_pid = pid;
@@ -35,10 +35,6 @@ void Debugger::run(){
         linenoiseHistoryAdd(line);
         linenoiseFree(line);
     }
-}
-
-void Debugger::waitForSignal(){
-
 }
 
 void Debugger::initializeLoadAddress() {
@@ -90,6 +86,14 @@ void Debugger::handleCommand(const std::string& line){
     }else if(isPrefix(command, "break")){
         std::string addr{args[1], 2};
         setBreakpointAtAddress(std::stol(addr, 0, 16));
+    }else if(args[1].find(':') != std::string::npos){
+        auto fileAndLine = split(args[1], ':');
+        
+    }else if(isPrefix(command, "memory")){
+        std::string address{args[2], 2};
+        if(isPrefix(args[1], "read")){
+            
+        }
     }
     else{
         std::cerr << "Unknow command\n";
@@ -158,6 +162,26 @@ siginfo_t Debugger::getSignalInfo(){
     return info;
 }
 
+void Debugger::handleSignalTrap(siginfo_t info){
+    switch(info.si_code){
+        case SI_KERNEL:
+        case TRAP_BRANCH: {
+            // put the pc back where it should be
+            m_memory.setPC(m_memory.getPC()-1);
+            std::cout << "Hit breakpoint at address 0x" << std::hex << m_memory.getPC() << std::endl;
+            auto offsetPC = offsetLoadAddress(m_memory.getPC());
+            auto lineEntry = getLineEntryFromPc(offsetPC);
+            printSource(lineEntry->file->path, lineEntry->line);
+            return;
+        }
+        case TRAP_TRACE:
+            return;
+        default:
+            std::cout << "Unknown SIGTRAP code " << info.si_code << std::endl;
+            return;
+    }
+}
+
 void Debugger::waitForSignal(){
     int waitStatus;
     auto options = 0;
@@ -169,12 +193,89 @@ void Debugger::waitForSignal(){
             handleSignalTrap(siginfo);
             break; 
         case SIGSEGV:
-            std::cout << "Yay, segfault. Reason: " << siginfo.si_code << std::endl;
+            std::cout << "segfault. Reason: " << siginfo.si_code << std::endl;
             break;
         default:
             std::cout << "Got signal " << strsignal(siginfo.si_signo) << std::endl;
         
     }
+}
+
+void Debugger::printSource(const std::string& fileName, unsigned line, unsigned nLinesContext){
+    std::ifstream file{fileName};
+    if (!file.is_open()) {
+        std::cerr << "Could not open the file: " << fileName << std::endl;
+        return;
+    }
+    
+    auto startLine = line <= nLinesContext ? 1 : line - nLinesContext;
+    auto endLine = line + nLinesContext + (line < nLinesContext ? nLinesContext - line : 0) + 1;
+
+    char c{};
+    unsigned int currentLine = 1;
+    while(currentLine != startLine && file.get(c)){
+        if(c == '\n'){
+            ++currentLine;
+        }
+    }
+    std::cout << (currentLine == line ? "> " : "  ");
+    
+    while(currentLine <= endLine && file.get(c)){
+        std::cout << c;
+        if(c == '\n'){
+            ++currentLine;
+            std::cout << (currentLine == line ? "> " : "  ");
+        }
+    }
+    //Write newline and make sure that the stream is flushed properly
+    std::cout << std::endl;
+    file.close();
+}
+void Debugger::stepOverBreakpoint(){
+    if(m_breakpoint.count(m_memory.getPC())){
+        auto& bp = m_breakpoint[m_memory.getPC()];
+        if(bp->isEnable()){
+            bp->disable();
+            ptrace(PTRACE_SINGLESTEP, m_pid, nullptr, nullptr);
+            waitForSignal();
+            bp->enable();
+        }
+    }
+}
+
+void Debugger::singleStepInstruction(){
+    ptrace(PTRACE_SINGLESTEP, m_pid, nullptr, nullptr);
+    waitForSignal();
+}
+
+void Debugger::singleInstrucWithBpCheck(){
+    if(m_breakpoint.count(m_memory.getPC())){
+        stepOverBreakpoint();
+    }else{
+        singleStepInstruction();
+    }
+}
+
+void Debugger::stepOut(){
+    auto framePointer = m_memory.getRegisterValue(m_pid, Reg::rbp);
+    auto returnAddress = m_memory.readMemory(framePointer+8);
+    bool shouldRemoveBp = false;
+    if(!m_breakpoint.count(returnAddress)){
+        setBreakpointAtAddress(returnAddress);
+        shouldRemoveBp = true;
+    }
+    continueExection();
+    
+    if(shouldRemoveBp){
+        removeBreakpoint(returnAddress);
+    }
+}
+
+void Debugger::removeBreakpoint(std::intptr_t address){
+    if(m_breakpoint.at(address)->isEnable()){
+        m_breakpoint.at(address)->disable();
+    }
+    m_breakpoint.erase(address);
 }
 
 }

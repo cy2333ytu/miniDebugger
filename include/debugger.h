@@ -20,7 +20,6 @@ public:
     void waitForSignal();
     void initializeLoadAddress();
     uint64_t offsetLoadAddress(uint64_t addr);
-    void waitForSignal();
     siginfo_t getSignalInfo();
 
     void handleCommand(const std::string& line);
@@ -30,6 +29,15 @@ public:
     void setBreakpointAtAddress(std::intptr_t addr);
     dwarf::die getFunctionFromPc(uint64_t pc);
     dwarf::line_table::iterator getLineEntryFromPc(uint64_t pc);
+
+    void handleSignalTrap(siginfo_t info);
+    void printSource(const std::string& fileName, unsigned line, unsigned nLinesContext = 2);
+    void stepOverBreakpoint();
+    void singleStepInstruction();
+
+    void singleInstrucWithBpCheck();
+    void stepOut();
+    void removeBreakpoint(std::intptr_t);
 private:
     std::string m_prog_name;
     pid_t m_pid;
@@ -37,6 +45,7 @@ private:
     elf::elf m_pElf;          // Executable and Linkable Format
     dwarf::dwarf m_pDwarf;    // Debugging With Arbitrary Record Format
     uint64_t m_loadAddress = 0;
+    Memory m_memory;
 };
 
 
