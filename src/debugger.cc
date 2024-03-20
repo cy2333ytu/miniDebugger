@@ -84,16 +84,32 @@ void Debugger::handleCommand(const std::string& line){
     if(isPrefix(command, "cont")){
         continueExection();
     }else if(isPrefix(command, "break")){
-        std::string addr{args[1], 2};
-        setBreakpointAtAddress(std::stol(addr, 0, 16));
-    }else if(args[1].find(':') != std::string::npos){
+            if (args[1][0] == '0' && args[1][1] == 'x') {
+            std::string addr {args[1], 2};
+            setBreakpointAtAddress(std::stol(addr, 0, 16));
+        }
+        else if (args[1].find(':') != std::string::npos) {
+            auto file_and_line = split(args[1], ':');
+            // set_breakpoint_at_source_line(file_and_line[0], std::stoi(file_and_line[1]));
+        }
+        else {
+            // set_breakpoint_at_function(args[1]);
+        }
+    }
+    else if(args[1].find(':') != std::string::npos){
         auto fileAndLine = split(args[1], ':');
         
     }else if(isPrefix(command, "memory")){
         std::string address{args[2], 2};
         if(isPrefix(args[1], "read")){
-            
+            std::cout << m_memory.getRegisterValue(m_pid, m_memory.getRegisterFromName(args[2])) << std::endl;
         }
+    }else if(isPrefix(command, "step")){
+        stepIn();
+    }else if(isPrefix(command, "next")){
+        stepOver();
+    }else if(isPrefix(command, "finish")){
+        stepOut();
     }
     else{
         std::cerr << "Unknow command\n";
@@ -277,5 +293,47 @@ void Debugger::removeBreakpoint(std::intptr_t address){
     }
     m_breakpoint.erase(address);
 }
+
+void Debugger::stepIn(){
+    auto line = getLineEntryFromPc(getOffsetPc())->line;
+    while(getLineEntryFromPc(getOffsetPc())->line == line){
+        singleInstrucWithBpCheck();
+    }
+    auto lineEntry = getLineEntryFromPc(getOffsetPc());
+    printSource(lineEntry->file->path, lineEntry->line);
+}
+
+void Debugger::stepOver(){
+    auto func = getFunctionFromPc(getOffsetPc());
+    auto funcEntry = at_low_pc(func);
+    auto funcEnd = at_high_pc(func);
+
+    auto line = getLineEntryFromPc(funcEntry);
+    auto startLine = getLineEntryFromPc(getOffsetPc());
+
+    std::vector<std::intptr_t> toDelete{};
+
+    while(line->address < funcEnd){
+        auto loadAddress = offserDwarfAddress(line->address);
+        if(line->address != startLine->address && !m_breakpoint.count(loadAddress)){
+            setBreakpointAtAddress(loadAddress);
+            toDelete.emplace_back(loadAddress);
+        }
+        ++line;
+    }
+    auto framePointer = m_memory.getRegisterValue(m_pid, Reg::rbp);
+    auto returnAddress = m_memory.readMemory(framePointer + 8);
+
+    if(!m_breakpoint.count(returnAddress)){
+        setBreakpointAtAddress(returnAddress);
+        toDelete.emplace_back(returnAddress);
+    }
+    continueExection();
+    for(auto &address: toDelete){
+        removeBreakpoint(address);
+    }
+
+}
+
 
 }
