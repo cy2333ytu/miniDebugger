@@ -83,7 +83,8 @@ void Debugger::handleCommand(const std::string& line){
     auto command = args[0];
     if(isPrefix(command, "cont")){
         continueExection();
-    }else if(isPrefix(command, "break")){
+    }
+    else if(isPrefix(command, "break")){
         if (args[1][0] == '0' && args[1][1] == 'x') {
             std::string addr {args[1], 2};
             setBreakpointAtAddress(std::stol(addr, 0, 16));
@@ -94,24 +95,55 @@ void Debugger::handleCommand(const std::string& line){
         }else{
             setBreakpointAtFunction(args[1]);
         }
-    }else if(isPrefix(command, "register")){
-        
     }
-    else if(isPrefix(command, "memory")){
-        std::string address{args[2], 2};
-        if(isPrefix(args[1], "read")){
+    else if(isPrefix(command, "register")){
+        if(isPrefix(args[1], "dump")){
+            m_memory.dumpRegisters();
+        }
+        else if(isPrefix(args[1], "read")){
             std::cout << m_memory.getRegisterValue(m_pid, m_memory.getRegisterFromName(args[2])) << std::endl;
         }
-    }else if(isPrefix(command, "step")){
+        else if(isPrefix(args[1], "write")){
+            std::string val{args[3], 2};    // assume 0xVAL
+            m_memory.setRegisterValue(m_pid, m_memory.getRegisterFromName(args[2]), std::stol(val, 0, 16));
+        }
+    }
+    else if(isPrefix(command, "memory")){
+        std::string addr{args[2], 2};    // assume oxADDRESS
+        if(isPrefix(args[1], "read")){
+            std::cout << std::hex << m_memory.readMemory(std::stol(addr, 0, 16)) << std::endl;
+        }
+        if(isPrefix(args[1], "write")){
+            std::string val {args[3], 2};   // assume 0xVAL
+            m_memory.writeMemory(std::stol(addr, 0, 16), std::stol(val, 0, 16));
+        }
+    }
+    else if(isPrefix(command, "step")){
         stepIn();
-    }else if(isPrefix(command, "next")){
+    }
+    else if(isPrefix(command, "next")){
         stepOver();
-    }else if(isPrefix(command, "finish")){
+    }
+    else if(isPrefix(command, "finish")){
         stepOut();
-    }else if(isPrefix(command, "backtrace")){
+    }
+    else if(isPrefix(command, "backtrace")){
         printBacktrace();
-    }else if(isPrefix(command, "bt")){
+    }
+    else if(isPrefix(command, "bt")){
         printBacktrace();
+    }
+    else if(isPrefix(command, "symbol")){
+        auto syms = lookupSymbol(args[1]);
+        for(auto&& s: syms){
+            std::cout << s.name << ' ' << symtoString(s.type) << " 0x"
+                << std::hex << s.address << std::endl;
+        }
+    }
+    else if(isPrefix(command, "stepi")){
+        singleInstrucWithBpCheck();
+        auto lineEntry = getLineEntryFromPc(m_memory.getPC());
+        printSource(lineEntry->file->path, lineEntry->line);
     }
     else{
         std::cerr << "Unknow command\n";
