@@ -12,6 +12,31 @@
 
 namespace ccy{
 
+enum class symType{
+    notype,         // No type
+    object,         // Data object
+    func,           // Function entry point
+    section,        // symbol is associate with a section
+    file,           // source file is associate with the object file
+};
+
+std::string symtoString(symType st){
+    switch(st){
+        case symType::notype: return "notype";
+        case symType::object: return "object";
+        case symType::func: return "func";
+        case symType::section: return "section";
+        case symType::file: return "file";
+    }
+}
+
+struct Sym{
+    symType type;
+    std::string name;
+    std::uintptr_t address;
+};
+
+
 class Debugger{
 public:
     Debugger(std::string prog_name, pid_t pid);
@@ -38,6 +63,17 @@ public:
     void singleInstrucWithBpCheck();
     void stepOut();
     void removeBreakpoint(std::intptr_t);
+    void stepIn();
+    uint64_t getOffsetPc(){return offsetLoadAddress(m_memory.getPC());}
+
+    std::vector<Sym> lookupSymbol(const std::string &name);
+    uint64_t offsetDwarfAddress(uint64_t addr) const {return addr + m_loadAddress;}
+    void stepOver();
+    
+    void setBreakpointAtFunction(const std::string& name);
+    void setBreakPointAtSourceLine(const std::string &file, unsigned line);
+    bool isSuffix(const std::string &s, const std::string &of);
+    void printBacktrace();
 private:
     std::string m_prog_name;
     pid_t m_pid;
@@ -46,6 +82,7 @@ private:
     dwarf::dwarf m_pDwarf;    // Debugging With Arbitrary Record Format
     uint64_t m_loadAddress = 0;
     Memory m_memory;
+
 };
 
 

@@ -84,22 +84,20 @@ void Debugger::handleCommand(const std::string& line){
     if(isPrefix(command, "cont")){
         continueExection();
     }else if(isPrefix(command, "break")){
-            if (args[1][0] == '0' && args[1][1] == 'x') {
+        if (args[1][0] == '0' && args[1][1] == 'x') {
             std::string addr {args[1], 2};
             setBreakpointAtAddress(std::stol(addr, 0, 16));
         }
         else if (args[1].find(':') != std::string::npos) {
-            auto file_and_line = split(args[1], ':');
-            // set_breakpoint_at_source_line(file_and_line[0], std::stoi(file_and_line[1]));
+            auto fileAndLine = split(args[1], ':');
+            setBreakPointAtSourceLine(fileAndLine[0], std::stoi(fileAndLine[1]));
+        }else{
+            setBreakpointAtFunction(args[1]);
         }
-        else {
-            // set_breakpoint_at_function(args[1]);
-        }
-    }
-    else if(args[1].find(':') != std::string::npos){
-        auto fileAndLine = split(args[1], ':');
+    }else if(isPrefix(command, "register")){
         
-    }else if(isPrefix(command, "memory")){
+    }
+    else if(isPrefix(command, "memory")){
         std::string address{args[2], 2};
         if(isPrefix(args[1], "read")){
             std::cout << m_memory.getRegisterValue(m_pid, m_memory.getRegisterFromName(args[2])) << std::endl;
@@ -110,6 +108,10 @@ void Debugger::handleCommand(const std::string& line){
         stepOver();
     }else if(isPrefix(command, "finish")){
         stepOut();
+    }else if(isPrefix(command, "backtrace")){
+        printBacktrace();
+    }else if(isPrefix(command, "bt")){
+        printBacktrace();
     }
     else{
         std::cerr << "Unknow command\n";
@@ -314,7 +316,7 @@ void Debugger::stepOver(){
     std::vector<std::intptr_t> toDelete{};
 
     while(line->address < funcEnd){
-        auto loadAddress = offserDwarfAddress(line->address);
+        auto loadAddress = offsetDwarfAddress(line->address);
         if(line->address != startLine->address && !m_breakpoint.count(loadAddress)){
             setBreakpointAtAddress(loadAddress);
             toDelete.emplace_back(loadAddress);
@@ -334,6 +336,88 @@ void Debugger::stepOver(){
     }
 
 }
+
+void Debugger::setBreakpointAtFunction(const std::string& name){
+    for (const auto& cu : m_pDwarf.compilation_units()) {
+        for (const auto& die : cu.root()) {
+            if (die.has(dwarf::DW_AT::name) && at_name(die) == name) {
+                auto low_pc = at_low_pc(die);
+                auto entry = getLineEntryFromPc(low_pc);
+                ++entry; //skip prologue
+                setBreakpointAtAddress(offsetDwarfAddress(entry->address));
+            }
+        }
+    }
+}
+
+void Debugger::setBreakPointAtSourceLine(const std::string &file, unsigned line) {
+  for (const auto &compilationUnit : m_pDwarf.compilation_units()) {
+    if (isSuffix(file, at_name(compilationUnit.root()))) {
+      const auto &lt = compilationUnit.get_line_table();
+
+      for (const auto &entry : lt) {
+        if (entry.is_stmt && entry.line == line) {
+          setBreakpointAtAddress(offsetDwarfAddress(entry.address));
+          return;
+        }
+      }
+    }
+  }
+}
+
+bool Debugger::isSuffix(const std::string &s, const std::string &of) {
+  if (s.size() > of.size())
+    return false;
+  auto diff = of.size() - s.size();
+  return std::equal(s.begin(), s.end(), of.begin() + diff);
+}
+
+void Debugger::printBacktrace(){
+    auto outputFrame = [frameNumber = 0](auto&& func) mutable{
+        std::cout << "frame #" << frameNumber++ << ":0x" << dwarf::at_low_pc(func)
+            << ' ' << dwarf::at_name(func) << std::endl;
+    };
+    auto currentFunc = getFunctionFromPc(m_memory.getPC());
+    outputFrame(currentFunc);
+
+    auto framePointer = m_memory.getRegisterValue(m_pid, Reg::rbp);
+    auto returnAddress = m_memory.readMemory(framePointer+8);
+
+    while(dwarf::at_name(currentFunc) != "main"){
+        currentFunc = getFunctionFromPc(returnAddress);
+        outputFrame(currentFunc);
+        framePointer = m_memory.readMemory(framePointer);
+        returnAddress = m_memory.readMemory(framePointer+8);
+    }
+}
+
+symType elfToSymType11(elf::stt sym){
+    switch(sym){
+        case elf::stt::notype: return symType::notype;
+        case elf::stt::object: return symType::object;
+        case elf::stt::func: return symType::func;
+        case elf::stt::section: return symType::section;
+        case elf::stt::file: return symType::file;
+        default: return symType::notype;
+    }
+}
+
+std::vector<Sym> Debugger::lookupSymbol(const std::string &name){
+    std::vector<Sym> syms;
+    for(auto &section: m_pElf.sections()){
+        if(section.get_hdr().type != elf::sht::symtab && section.get_hdr().type != elf::sht::dynsym){
+            continue;
+        }
+        for(auto sym: section.as_symtab()){
+            if(sym.get_name() == name){
+                auto& data = sym.get_data();
+                syms.push_back(Sym{elfToSymType11(data.type()), sym.get_name(), data.value});
+            }
+        }
+    }
+    return syms;
+}
+
 
 
 }
